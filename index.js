@@ -38,20 +38,10 @@ const saveFile = (data, filename) =>
     )
   })
 
-;(async () => {
-  const browser = await puppeteer.launch({ headless: false })
-  const page = await browser.newPage()
+const extractSinglePage = async page => {
+  const currentUrl = page.url()
 
-  page.exposeFunction('saveFile', saveFile)
-
-  await page.setViewport({ width: 1440, height: 800, deviceScaleFactor: 2 })
-  //   await page._client.send('Page.setDownloadBehavior', {
-  //     behavior: 'allow',
-  //     downloadPath: './',
-  //   })
-
-  await page.goto(dossier)
-  //   await page.pdf({ path: 'output/screenshot.pdf' }) // doesn't work with { headless: false } which I need to enter the username and password
+  console.log('extractSingle page for', currentUrl)
 
   const allRowsSelector = '#ListHR_Header .DataLight, #ListHR_Header .DataDark'
 
@@ -68,26 +58,33 @@ const saveFile = (data, filename) =>
         attachments: Array.from(
           Array.from(columns[8].querySelectorAll('a')).map(a => ({
             url: a.href,
-            filename: `${columns[1].textContent}_${
-              a.textContent.trim().match(withoutSize)[1]
-            }`,
+            filename: `${columns[1].textContent}_${a.textContent
+              .trim()
+              .match(withoutSize)[1]
+              .replace(/\//g, '_')}`,
           })),
         ),
       }
     }),
   )
 
-  // download the ones with an attachment
-  // const documentsWithAttachments = documents.filter(
-  //   d => d.attachments.length > 0,
-  // )
+  const nextButtonSelector = '.pgFooterButton[title="CTRL ALT X-Next"]'
+  const hasNextButton = await page.$$eval(
+    nextButtonSelector,
+    elements => elements.length > 0,
+  )
 
-  // await Promise.all(
-  //   documentsWithAttachments
-  //     .map(d => d.attachments)
-  //     .reduce((acc, cur) => [...acc, ...cur], [])
-  //     .map(async attachment => await page.evaluate(downloadUrl, attachment)),
-  // )
+  // download the ones with an attachment
+  const documentsWithAttachments = documents.filter(
+    d => d.attachments.length > 0,
+  )
+
+  await Promise.all(
+    documentsWithAttachments
+      .map(d => d.attachments)
+      .reduce((acc, cur) => [...acc, ...cur], [])
+      .map(async attachment => await page.evaluate(downloadUrl, attachment)),
+  )
 
   // make a pdf of the ones that don't have an attachment
   const documentsWithoutAttachment = documents.filter(
@@ -98,34 +95,33 @@ const saveFile = (data, filename) =>
     const d = documentsWithoutAttachment[i]
     await page.goto(d.url)
     await page.screenshot({
-      path: `${outputDirectory}/${d.id}_${d.subject}.png`,
+      path: `${outputDirectory}/${d.id}_${d.subject.replace(/\//g, '_')}.png`,
       fullPage: true,
     })
   }
 
-  // no Promise.all as we want the goto and screenshot to execute synchronously
-  // await documentsWithoutAttachment.map(async d => {
-  //   await page.goto(d.url)
-  //   await page.screenshot({
-  //     path: `${outputDirectory}/${d.id}_${d.subject}.png`,
-  //     fullPage: true,
-  //   })
-  // })
+  // await page.goto(currentUrl)
 
-  // console.log({ documentsWithoutAttachment })
+  // console.log({ currentUrl })
 
-  // go to the next page
-  //   await page.click(
-  //     '#ListHR_Header > tbody > tr:nth-child(3) > td:nth-child(9) > table > tbody > tr > td > a',
-  //   )
+  // if (hasNextButton) {
+  // await page.click(nextButtonSelector)
+  // await extractSinglePage(page)
+  // }
+}
 
-  //   const document = documents.filter(d => d.attachments.length > 0)[0]
-  //   const url = document.attachments[0].url
+;(async () => {
+  const browser = await puppeteer.launch({ headless: false })
+  const page = await browser.newPage()
 
-  //   await page.evaluate(downloadUrl, url)
+  page.exposeFunction('saveFile', saveFile)
 
-  //   const nextButtonSelector = '.pgFooterButton[title="CTRL ALT X-Next"'
-  //   await page.click(nextButtonSelector)
+  await page.setViewport({ width: 1440, height: 800, deviceScaleFactor: 2 })
+
+  await page.goto(dossier)
+
+  // manually set the pagesize to 1000 or really high as pagination doesn't work yet
+  await extractSinglePage(page)
 
   await browser.close()
 })()
