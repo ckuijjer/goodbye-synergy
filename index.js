@@ -44,13 +44,13 @@ const saveFile = (data, filename) =>
 
   page.exposeFunction('saveFile', saveFile)
 
+  await page.setViewport({ width: 1440, height: 800, deviceScaleFactor: 2 })
   //   await page._client.send('Page.setDownloadBehavior', {
   //     behavior: 'allow',
   //     downloadPath: './',
   //   })
 
   await page.goto(dossier)
-  //   await page.screenshot({ path: 'output/screenshot.png' })
   //   await page.pdf({ path: 'output/screenshot.pdf' }) // doesn't work with { headless: false } which I need to enter the username and password
 
   const allRowsSelector = '#ListHR_Header .DataLight, #ListHR_Header .DataDark'
@@ -78,18 +78,41 @@ const saveFile = (data, filename) =>
   )
 
   // download the ones with an attachment
-  const documentsWithAttachments = documents.filter(
-    d => d.attachments.length > 0,
-  )
+  // const documentsWithAttachments = documents.filter(
+  //   d => d.attachments.length > 0,
+  // )
 
-  await Promise.all(
-    documentsWithAttachments
-      .map(d => d.attachments)
-      .reduce((acc, cur) => [...acc, ...cur], [])
-      .map(async attachment => await page.evaluate(downloadUrl, attachment)),
-  )
+  // await Promise.all(
+  //   documentsWithAttachments
+  //     .map(d => d.attachments)
+  //     .reduce((acc, cur) => [...acc, ...cur], [])
+  //     .map(async attachment => await page.evaluate(downloadUrl, attachment)),
+  // )
 
   // make a pdf of the ones that don't have an attachment
+  const documentsWithoutAttachment = documents.filter(
+    d => d.attachments.length === 0,
+  )
+
+  for (let i = 0; i < documentsWithoutAttachment.length; i++) {
+    const d = documentsWithoutAttachment[i]
+    await page.goto(d.url)
+    await page.screenshot({
+      path: `${outputDirectory}/${d.id}_${d.subject}.png`,
+      fullPage: true,
+    })
+  }
+
+  // no Promise.all as we want the goto and screenshot to execute synchronously
+  // await documentsWithoutAttachment.map(async d => {
+  //   await page.goto(d.url)
+  //   await page.screenshot({
+  //     path: `${outputDirectory}/${d.id}_${d.subject}.png`,
+  //     fullPage: true,
+  //   })
+  // })
+
+  // console.log({ documentsWithoutAttachment })
 
   // go to the next page
   //   await page.click(
