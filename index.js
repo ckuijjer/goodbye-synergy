@@ -1,11 +1,16 @@
 const puppeteer = require('puppeteer')
 const fs = require('fs')
 
+const outputDirectory = 'output/'
 const base = 'https://employees.exact.com'
 const hid = 201226
 const dossier = `${base}/docs/DocPersonHR.aspx?Res_ID=${hid}&ReturnTo=HRMDossierRpt.aspx?EmpID=${hid}`
 
-const downloadUrl = async url =>
+if (!fs.existsSync(outputDirectory)) {
+  fs.mkdirSync(outputDirectory)
+}
+
+const downloadUrl = async ({ url, filename }) =>
   fetch(url, {
     responseType: 'arraybuffer',
   })
@@ -18,14 +23,19 @@ const downloadUrl = async url =>
         ),
       ),
     )
-    .then(base64 => window.saveFile(base64, 'example.pdf'))
+    .then(base64 => window.saveFile(base64, filename))
 
 const saveFile = (data, filename) =>
   new Promise((resolve, reject) => {
-    fs.writeFile(filename, data, 'base64', (err, text) => {
-      if (err) reject(err)
-      else resolve()
-    })
+    fs.writeFile(
+      `${outputDirectory}${filename}`,
+      data,
+      'base64',
+      (err, text) => {
+        if (err) reject(err)
+        else resolve()
+      },
+    )
   })
 
 ;(async () => {
@@ -40,7 +50,8 @@ const saveFile = (data, filename) =>
   //   })
 
   await page.goto(dossier)
-  await page.screenshot({ path: 'example.png' })
+  //   await page.screenshot({ path: 'output/screenshot.png' })
+  //   await page.pdf({ path: 'output/screenshot.pdf' }) // doesn't work with { headless: false } which I need to enter the username and password
 
   const allRowsSelector = '#ListHR_Header .DataLight, #ListHR_Header .DataDark'
 
@@ -48,15 +59,18 @@ const saveFile = (data, filename) =>
     rows.map(row => {
       const columns = row.querySelectorAll('td')
 
+      const withoutSize = /(.*) \(.*\)/
+
       return {
-        hid: columns[1].textContent,
+        id: columns[1].textContent,
         url: columns[1].querySelector('a').href,
         subject: columns[2].textContent,
         attachments: Array.from(
           Array.from(columns[8].querySelectorAll('a')).map(a => ({
             url: a.href,
-            filename: a.textContent.trim(),
-            element: a,
+            filename: `${columns[1].textContent}_${
+              a.textContent.trim().match(withoutSize)[1]
+            }`,
           })),
         ),
       }
@@ -64,9 +78,16 @@ const saveFile = (data, filename) =>
   )
 
   // download the ones with an attachment
-  //   const documents = documents.filter(d => d.attachments.length > 0)
+  const documentsWithAttachments = documents.filter(
+    d => d.attachments.length > 0,
+  )
 
-  //   await Promise.all([])
+  await Promise.all(
+    documentsWithAttachments
+      .map(d => d.attachments)
+      .reduce((acc, cur) => [...acc, ...cur], [])
+      .map(async attachment => await page.evaluate(downloadUrl, attachment)),
+  )
 
   // make a pdf of the ones that don't have an attachment
 
